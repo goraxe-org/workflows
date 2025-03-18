@@ -4,6 +4,7 @@ on:
   workflow_call:
     secrets:
       gh-token:
+      gh_token:
     
   # push:
   #   branches-ignore:
@@ -28,6 +29,8 @@ jobs:
           fetch-depth: 0
         # this could be replaced by getting the most recent tag, then
         # getting the commits between the last tag and the current commit
+      - run: "echo ${{ secrets.gh-token }}"
+      - run: "echo ${{ secrets.gh_token }}"
       - name: Get commits between last success and this commit
         uses: nrwl/nx-set-shas@v4
         with:
