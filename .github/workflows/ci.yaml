@@ -27,7 +27,7 @@ jobs:
         # this could be replaced by getting the most recent tag, then
         # getting the commits between the last tag and the current commit
       - name: Get commits between last success and this commit
-        uses: nrwl/nx-set-shas@v3
+        uses: nrwl/nx-set-shas@v4
         with:
           # fallback-sha: 89070420373e8769feafe1e70f4d5d4f5f81cfd0
           workflow-id: cd.yaml
