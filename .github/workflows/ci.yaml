@@ -35,9 +35,9 @@ jobs:
       - run: "echo ${{ secrets.token }}"
       - name: Get commits between last success and this commit
         uses: nrwl/nx-set-shas@v4
-        with:
+        # with:
           # fallback-sha: 89070420373e8769feafe1e70f4d5d4f5f81cfd0
-          workflow-id: cd.yaml
+          # workflow-id: cd.yaml
       - id: targets
         run: |
           targets=$(git diff --name-only ${NX_BASE}..${NX_HEAD} | xargs -L1 dirname | sed -e '/^\./d' -e 's@/.*$@@' | uniq | jq -ncR '[inputs]')
