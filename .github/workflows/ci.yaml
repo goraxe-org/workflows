@@ -1,9 +1,11 @@
 name: CI
 
 on:
-  push:
-    branches-ignore:
-      - main
+  workflow_call:
+    
+  # push:
+  #   branches-ignore:
+  #     - main
 
 jobs:
   pre-commit:
