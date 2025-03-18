@@ -2,6 +2,8 @@ name: CI
 
 on:
   workflow_call:
+    secrets:
+      gh-token:
     
   # push:
   #   branches-ignore:
@@ -31,6 +33,7 @@ jobs:
         with:
           # fallback-sha: 89070420373e8769feafe1e70f4d5d4f5f81cfd0
           workflow-id: cd.yaml
+          gh-token: ${{ secrets.gh-token }}
       - id: targets
         run: |
           targets=$(git diff --name-only ${NX_BASE}..${NX_HEAD} | xargs -L1 dirname | sed -e '/^\./d' -e 's@/.*$@@' | uniq | jq -ncR '[inputs]')
