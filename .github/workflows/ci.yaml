@@ -40,7 +40,9 @@ jobs:
           # workflow-id: cd.yaml
       - id: targets
         run: |
+          echo "base ${NX_BASE}, head: ${NX_HEAD}"
           targets=$(git diff --name-only ${NX_BASE}..${NX_HEAD} | xargs -L1 dirname | sed -e '/^\./d' -e 's@/.*$@@' | uniq | jq -ncR '[inputs]')
+          echo "targets=${targets}"
           echo "targets=${targets}" >> "$GITHUB_OUTPUT"
           
 
