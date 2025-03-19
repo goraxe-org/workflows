@@ -21,10 +21,13 @@ runs:
       working-directory: ${{ inputs.target }}
       shell: "bash"
       run: |
+        echo "${{ inputs.CODECOV_TOKEN }}"
         pwd
         ls -la
         mkdir -p ../coverage/${{ inputs.target }}
+        echo "build"
         cargo build
+        echo "test"
         cargo llvm-cov --package $(basename  ${{ inputs.target }}) --codecov --output-path ../coverage/${{inputs.target}}/codecov.json
         ls -lR ../coverage
 
