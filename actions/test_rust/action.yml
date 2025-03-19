@@ -42,5 +42,6 @@ runs:
         token: ${{ inputs.CODECOV_TOKEN }}
         slug: ${{ github.repository }}
         verbose: true
-        directory: coverage
+        # directory: coverage
+        directory: ${{ inputs.target }}/coverage
         fail_ci_if_error: true

@@ -45,6 +45,8 @@ runs:
       shell: bash
       run: |
         pnpm test
+        ls -l || true
+        ls -l ${{ inputs.target }}/coverage || true
 
     - name: Upload coverage to Codecov
       if: ${{ inputs.CODECOV_TOKEN }}
@@ -52,5 +54,5 @@ runs:
       with:
         verbose: true
         token: ${{ inputs.CODECOV_TOKEN }}
-        directory: coverage/${{ inputs.target }}
+        directory: ${{ inputs.target }}/coverage
         fail_ci_if_error: true
