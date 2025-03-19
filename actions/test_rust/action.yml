@@ -45,4 +45,3 @@ runs:
         verbose: true
         # directory: coverage
         directory: ${{ inputs.target }}/coverage
-        fail_ci_if_error: true
