@@ -54,7 +54,7 @@ jobs:
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
-      - uses: ./actions/test
+      - uses: goraxe-org/workflows/actions/test@main
         with:
           target: ${{ matrix.target }}
         env:
