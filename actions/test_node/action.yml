@@ -48,6 +48,12 @@ runs:
         ls -l || true
         ls -l ${{ inputs.target }}/coverage || true
 
+    - name: Upload test results to Codecov
+      if: ${{ !cancelled() }}
+      uses: codecov/test-results-action@v1
+      with:
+        token: ${{ inputs.CODECOV_TOKEN }}
+
     - name: Upload coverage to Codecov
       if: ${{ inputs.CODECOV_TOKEN }}
       uses: codecov/codecov-action@v4
