@@ -54,7 +54,7 @@ jobs:
       fail-fast: false
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/test
+      - uses: ./actions/test
         with:
           target: ${{ matrix.target }}
         env:
