@@ -18,10 +18,10 @@ runs:
           echo "lang=node" >> $GITHUB_OUTPUT
         fi
     - if: ${{ steps.test_system.outputs.lang == 'rust' }}
-      uses: ./actions/test_rust
+      uses: goraxe-org/workflows/actions/test_rust@main
       with:
         target: ${{ inputs.target }}
     - if: ${{ steps.test_system.outputs.lang == 'node' }}
-      uses: ./actions/test_node
+      uses: goraxe-org/workflows/actions/test_node@main
       with:
         target: ${{ inputs.target }}
