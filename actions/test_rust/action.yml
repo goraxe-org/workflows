@@ -1,6 +1,6 @@
 name: Test Rust
 description: Test Rust
-inputs: 
+inputs:
   target:
     description: "directory to run tests in"
     required: true
@@ -18,11 +18,11 @@ runs:
       working-directory: ${{ inputs.target }}
       shell: "bash"
       run: |
-       pwd
-       ls -la
-       mkdir -p ../coverage/${{ inputs.target }}
-       cargo llvm-cov --package ${{ inputs.target }} --codecov --output-path ../coverage/${{inputs.target}}/codecov.json
-       ls -lR ../coverage
+        pwd
+        ls -la
+        mkdir -p ../coverage/${{ inputs.target }}
+        cargo llvm-cov --package $(basename  ${{ inputs.target }}) --codecov --output-path ../coverage/${{inputs.target}}/codecov.json
+        ls -lR ../coverage
 
     - name: Codecov
       # You may pin to the exact commit or the version.
