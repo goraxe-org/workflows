@@ -2,11 +2,12 @@ name: CI
 
 on:
   workflow_call:
-    secrets:
-      gh-token:
-      gh_token:
-      token:
-    
+    inputs:
+      fallback-sha:
+        description: Provide sha that should be used if no success found
+        type: string
+        required: false
+
   # push:
   #   branches-ignore:
   #     - main
@@ -15,7 +16,7 @@ jobs:
   pre-commit:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
     # validate commit message
   determine_targets:
     runs-on: ubuntu-latest
@@ -30,21 +31,19 @@ jobs:
           fetch-depth: 0
         # this could be replaced by getting the most recent tag, then
         # getting the commits between the last tag and the current commit
-      - run: "echo ${{ secrets.gh-token }}"
-      - run: "echo ${{ secrets.gh_token }}"
-      - run: "echo ${{ secrets.token }}"
       - name: Get commits between last success and this commit
         uses: nrwl/nx-set-shas@v4
-        # with:
-          # fallback-sha: 89070420373e8769feafe1e70f4d5d4f5f81cfd0
-          # workflow-id: cd.yaml
+        with:
+          fallback-sha: ${{ inputs.fallback-sha }}
+        # fallback-sha: 89070420373e8769feafe1e70f4d5d4f5f81cfd0
+        # workflow-id: cd.yaml
       - id: targets
         run: |
           echo "base ${NX_BASE}, head: ${NX_HEAD}"
-          targets=$(git diff --name-only ${NX_BASE}..${NX_HEAD} | xargs -L1 dirname | sed -e '/^\./d' -e 's@/.*$@@' | uniq | jq -ncR '[inputs]')
+          targets=$(git diff --name-only ${NX_BASE}..${NX_HEAD} | xargs -L1 dirname | sed -e '/^\./d' -e 's@/.*/.*$@@' | sort | uniq | jq -ncR '[inputs]')
+          #targets=$(git diff --name-only ${NX_BASE}..${NX_HEAD} | xargs -L1 dirname | sed -e '/^\./d' -e 's@/.*$@@' | uniq | jq -ncR '[inputs]')
           echo "targets=${targets}"
           echo "targets=${targets}" >> "$GITHUB_OUTPUT"
-          
 
   test:
     runs-on: ubuntu-latest
