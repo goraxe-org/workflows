@@ -4,6 +4,9 @@ inputs:
   target:
     description: "directory to run tests in"
     required: true
+  CODECOV_TOKEN:
+    required: false
+    description: "the token for codecov"
 
 runs:
   using: composite
@@ -44,8 +47,10 @@ runs:
         pnpm test
 
     - name: Upload coverage to Codecov
+      if: ${{ inputs.CODECOV_TOKEN }}
       uses: codecov/codecov-action@v4
       with:
         verbose: true
+        token: ${{ inputs.CODECOV_TOKEN }}
         directory: coverage/${{ inputs.target }}
         fail_ci_if_error: true
