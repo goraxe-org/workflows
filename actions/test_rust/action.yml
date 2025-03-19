@@ -21,6 +21,7 @@ runs:
         pwd
         ls -la
         mkdir -p ../coverage/${{ inputs.target }}
+        cargo build
         cargo llvm-cov --package $(basename  ${{ inputs.target }}) --codecov --output-path ../coverage/${{inputs.target}}/codecov.json
         ls -lR ../coverage
 

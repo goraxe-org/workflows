@@ -42,7 +42,6 @@ runs:
       shell: bash
       run: |
         pnpm test
-        ls -lR ../coverage
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
