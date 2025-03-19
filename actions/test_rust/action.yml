@@ -31,13 +31,13 @@ runs:
     - name: Codecov
       # You may pin to the exact commit or the version.
       # uses: codecov/codecov-action@81cd2dc8148241f03f5839d295e000b8f761e378
-      if: ${{ inputs.CODECOV_TOKEN }}
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@v5
       with:
         # Repository upload token - get it from codecov.io. Required only for private repositories
         # token:  # optional
         # Specify whether the Codecov output should be verbose
         token: ${{ inputs.CODECOV_TOKEN }}
+        slug: ${{ github.repository }}
         verbose: true
         directory: coverage
         fail_ci_if_error: true

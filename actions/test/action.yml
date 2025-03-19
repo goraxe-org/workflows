@@ -4,6 +4,9 @@ inputs:
   target:
     description: "directory to run tests in"
     required: true
+  CODECOV_TOKEN:
+    required: false
+    description: "the token for codecov"
 runs:
   using: composite
   steps:
@@ -21,7 +24,9 @@ runs:
       uses: goraxe-org/workflows/actions/test_rust@main
       with:
         target: ${{ inputs.target }}
+        CODECOV_TOKEN: ${{ inputs.CODECOV_TOKEN }}
     - if: ${{ steps.test_system.outputs.lang == 'node' }}
       uses: goraxe-org/workflows/actions/test_node@main
       with:
         target: ${{ inputs.target }}
+        CODECOV_TOKEN: ${{ inputs.CODECOV_TOKEN }}
