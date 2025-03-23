@@ -22,6 +22,12 @@ inputs:
   release-version:
     description: "version to tag images with"
     required: false
+  cosign_password:
+    required: false
+    description: cosign password
+  cosign_private_key:
+    required: false
+    description: cosign private key
 runs:
   using: composite
   steps:
@@ -68,6 +74,7 @@ runs:
         provenance: true
         cache-to: type=gha,mode=max
     - name: "Sign image with a key"
+      if: ${{ inputs.cosign_private_key && inputs.cosign_password }}
       shell: bash
       run: |
         images=""
@@ -79,7 +86,10 @@ runs:
       env:
         TAGS: ${{ steps.meta.outputs.tags }}
         DIGEST: ${{ steps.build.outputs.digest }}
+        COSIGN_PRIVATE_KEY: ${{ inputs.cosign_private_key }}
+        COSIGN_PASSWORD: ${{ inputs.cosign_password }}
     - name: "Push images"
+      if: ${{ inputs.push }}
       shell: bash
       run: |
         images=""
