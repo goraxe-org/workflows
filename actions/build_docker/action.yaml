@@ -19,6 +19,9 @@ inputs:
     description: "push the image"
     required: false
     default: "true"
+  release-version:
+    description: "version to tag images with"
+    required: false
 runs:
   using: composite
   steps:
@@ -34,20 +37,18 @@ runs:
       with:
         registry: ${{ inputs.registry }}
         username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+        password: ${{ github.token }}
     # This step uses [docker/metadata-action](https://github.com/docker/metadata-action#about) to extract tags and labels that will be applied to the specified image. The `id` "meta" allows the output of this step to be referenced in a subsequent step. The `images` value provides the base name for the tags and labels.
     - name: "Extract metadata (tags, labels) for Docker"
       id: meta
       uses: docker/metadata-action@8e1d5461f02b7886d3c1a774bfbd873650445aa2
-      env:
-        TAG: v$RELEASE_VERSION
       with:
         images: ${{ inputs.registry }}/${{ inputs.image_name }}
         tags: |
           type=schedule
-          type=semver,pattern={{version}},value=${{ needs.semantic-release.outputs.release-version}}
-          type=semver,pattern={{major}}.{{minor}},value=${{ needs.semantic-release.outputs.release-version }}
-          type=semver,pattern={{major}},value=${{ needs.semantic-release.outputs.release-version }}
+          type=semver,pattern={{version}},value=${{ inputs.release-version}}
+          type=semver,pattern={{major}}.{{minor}},value=${{ inputs.release-version }}
+          type=semver,pattern={{major}},value=${{ inputs.release-version }}
           type=ref,event=branch
           type=ref,event=pr
           type=sha,format=long
