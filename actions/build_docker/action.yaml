@@ -1,0 +1,91 @@
+name: Build Docker
+description: Build docker container
+inputs:
+  registry:
+    description: "registry to push containers to"
+    required: false
+    default: ghcr.io
+  image_name:
+    description: "name of the image"
+    required: false
+    default: ${{ github.repository }}
+  context:
+    description: "context for the docker build"
+    required: false
+  file:
+    description: "location of the docker file default {context}/Dockerfile"
+    required: false
+  push:
+    description: "push the image"
+    required: false
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    # Uses the `docker/login-action` action to log in to the Container registry registry using the account and password that will publish the packages. Once published, the packages are scoped to the account defined here.
+    - name: Install Cosign
+      uses: sigstore/cosign-installer@v3.7.0
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    - name: Log in to the Container registry
+      uses: docker/login-action@327cd5a69de6c009b9ce71bce8395f28e651bf99
+      with:
+        registry: ${{ inputs.registry }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    # This step uses [docker/metadata-action](https://github.com/docker/metadata-action#about) to extract tags and labels that will be applied to the specified image. The `id` "meta" allows the output of this step to be referenced in a subsequent step. The `images` value provides the base name for the tags and labels.
+    - name: "Extract metadata (tags, labels) for Docker"
+      id: meta
+      uses: docker/metadata-action@8e1d5461f02b7886d3c1a774bfbd873650445aa2
+      env:
+        TAG: v$RELEASE_VERSION
+      with:
+        images: ${{ inputs.registry }}/${{ inputs.image_name }}
+        tags: |
+          type=schedule
+          type=semver,pattern={{version}},value=${{ needs.semantic-release.outputs.release-version}}
+          type=semver,pattern={{major}}.{{minor}},value=${{ needs.semantic-release.outputs.release-version }}
+          type=semver,pattern={{major}},value=${{ needs.semantic-release.outputs.release-version }}
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,format=long
+
+    - name: "Build Docker image"
+      id: build
+      uses: docker/build-push-action@67a2d409c0a876cbe6b11854e3e25193efe4e62d
+      with:
+        context: ${{ inputs.context }}
+        file: ${{ inputs.file }}
+        push: false
+        load: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        sbom: true
+        provenance: true
+        cache-to: type=gha,mode=max
+    - name: "Sign image with a key"
+      shell: bash
+      run: |
+        images=""
+        for tag in ${TAGS}; do
+          images+="${tag}@${DIGEST} "
+        done
+        # shellcheck disable=SC2086
+        cosign sign --yes --key env://COSIGN_PRIVATE_KEY ${images}
+      env:
+        TAGS: ${{ steps.meta.outputs.tags }}
+        DIGEST: ${{ steps.build.outputs.digest }}
+    - name: "Push images"
+      shell: bash
+      run: |
+        images=""
+        for tag in ${TAGS}; do
+          images+="${tag}@${DIGEST} "
+        done
+        docker push ${images}
+      env:
+        TAGS: ${{ steps.meta.outputs.tags }}
+        DIGEST: ${{ steps.build.outputs.digest }}
