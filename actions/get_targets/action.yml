@@ -1,0 +1,49 @@
+name: Build Docker
+description: Build docker container
+inputs:
+  files:
+    description: list of files to use to check for directory changes
+    default: "Dockerfile Cargo.toml go.mod package.json"
+    required: false
+  fallback-sha:
+    description: Provide sha that should be used if no success found
+    required: false
+outputs:
+  targets:
+    description: the targets found
+    value: ${{ steps.targets.outputs.targets }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+      # this could be replaced by getting the most recent tag, then
+      # getting the commits between the last tag and the current commit
+    - name: Get commits between last success and this commit
+      uses: nrwl/nx-set-shas@v4
+      with:
+        fallback-sha: ${{ inputs.fallback-sha }}
+      # fallback-sha: 89070420373e8769feafe1e70f4d5d4f5f81cfd0
+      # workflow-id: cd.yaml
+    - id: targets
+      shell: bash
+      run: |
+        echo "base ${NX_BASE}, head: ${NX_HEAD}"
+        # get raw directories that had a change in theme
+        paths=$(git diff --name-only ${NX_BASE}..${NX_HEAD} | xargs -L1 dirname | sed -e '/^\./d' -e 's@/.*/.*$@@' | sort | uniq)
+        #targets=$(git diff --name-only ${NX_BASE}..${NX_HEAD} | xargs -L1 dirname | sed -e '/^\./d' -e 's@/.*$@@' | uniq | jq -ncR '[inputs]')
+
+        project_files = ${{ inputs.files }}
+        targets=$(for path in ${paths}; do
+          for file in ${project_files}; do
+            if [[ -e ${path}/${file} ]]; then
+                echo $path
+                # exit the inner loop
+                break
+            fi
+          done
+        done | jq -ncR '[inputs]')
+
+        echo "targets=${targets}"
+        echo "targets=${targets}" >> "$GITHUB_OUTPUT"
