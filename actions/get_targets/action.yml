@@ -29,14 +29,14 @@ runs:
       shell: bash
     - name: Get commits between last success and this commit
       uses: nrwl/nx-set-shas@v4
-      if: ${{ inputs.all != true }}
+      if: ${{ ! (inputs.all == 'true') }}
       with:
         fallback-sha: ${{ inputs.fallback-sha }}
       # fallback-sha: 89070420373e8769feafe1e70f4d5d4f5f81cfd0
       # workflow-id: cd.yaml
     - name: Get commits from inital to this commit
       shell: bash
-      if: ${{ inputs.all == true }}
+      if: ${{ inputs.all == 'true' }}
       run: |
         NX_BASE=$(git rev-list --parents HEAD | egrep "^[a-f0-9]{40}$")
         NX_HEAD=$(git rev-parse HEAD)
