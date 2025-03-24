@@ -66,7 +66,7 @@ runs:
         outputs: type=cacheonly
         context: ${{ inputs.context }}
         file: ${{ inputs.file }}
-        push: false
+        push: ${{ inputs.push }}
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
@@ -74,7 +74,7 @@ runs:
         provenance: true
         cache-to: type=gha,mode=max
     - name: "Sign image with a key"
-      if: ${{ inputs.cosign_private_key && inputs.cosign_password }}
+      if: ${{ inputs.push && inputs.cosign_private_key && inputs.cosign_password }}
       shell: bash
       run: |
         images=""
@@ -85,22 +85,23 @@ runs:
             images+="${tag} "
           fi
         done
+        # do not upload to transparency log
         # shellcheck disable=SC2086
-        cosign sign --yes --key env://COSIGN_PRIVATE_KEY ${images}
+        cosign sign --tlog-upload=false --yes --key env://COSIGN_PRIVATE_KEY ${images}
       env:
         TAGS: ${{ steps.meta.outputs.tags }}
         DIGEST: ${{ steps.build.outputs.digest }}
         COSIGN_PRIVATE_KEY: ${{ inputs.cosign_private_key }}
         COSIGN_PASSWORD: ${{ inputs.cosign_password }}
-    - name: "Push images"
-      if: ${{ inputs.push }}
-      shell: bash
-      run: |
-        images=""
-        for tag in ${TAGS}; do
-          images+="${tag}@${DIGEST} "
-        done
-        docker push ${images}
-      env:
-        TAGS: ${{ steps.meta.outputs.tags }}
-        DIGEST: ${{ steps.build.outputs.digest }}
+    # - name: "Push images"
+    #   if: ${{ inputs.push }}
+    #   shell: bash
+    #   run: |
+    #     images=""
+    #     for tag in ${TAGS}; do
+    #       images+="${tag}@${DIGEST} "
+    #     done
+    #     docker push ${images}
+    #   env:
+    #     TAGS: ${{ steps.meta.outputs.tags }}
+    #     DIGEST: ${{ steps.build.outputs.digest }}
