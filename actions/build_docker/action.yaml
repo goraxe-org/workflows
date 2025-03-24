@@ -74,7 +74,7 @@ runs:
         provenance: true
         cache-to: type=gha,mode=max
     - name: "Sign image with a key"
-      if: ${{ inputs.push && inputs.cosign_private_key && inputs.cosign_password }}
+      if: ${{ inputs.push == "true" && inputs.cosign_private_key && inputs.cosign_password }}
       shell: bash
       run: |
         images=""
