@@ -24,6 +24,9 @@ runs:
         fetch-depth: 0
       # this could be replaced by getting the most recent tag, then
       # getting the commits between the last tag and the current commit
+    - run: |
+        echo "all: ${{ inputs.all }}"
+      shell: bash
     - name: Get commits between last success and this commit
       uses: nrwl/nx-set-shas@v4
       if: ${{ inputs.all != true }}
