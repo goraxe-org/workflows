@@ -8,6 +8,10 @@ inputs:
   fallback-sha:
     description: Provide sha that should be used if no success found
     required: false
+  all:
+    description: "use all of the commit history"
+    required: false
+    default: "false"
 outputs:
   targets:
     description: the targets found
@@ -22,10 +26,21 @@ runs:
       # getting the commits between the last tag and the current commit
     - name: Get commits between last success and this commit
       uses: nrwl/nx-set-shas@v4
+      if: ${{ ! inputs.all }}
       with:
         fallback-sha: ${{ inputs.fallback-sha }}
       # fallback-sha: 89070420373e8769feafe1e70f4d5d4f5f81cfd0
       # workflow-id: cd.yaml
+    - name: Get commits from inital to this commit
+      shell: bash
+      if: ${{ inputs.all }}
+      run: |
+        NX_BASE=$(git rev-list --parents HEAD | egrep "^[a-f0-9]{40}$")
+        NX_HEAD=$(git rev-parse HEAD)
+
+        echo "NX_BASE=${NX_BASE}" >> $GITHUB_ENV
+        echo "NX_HEAD=${NX_HEAD}" >> $GITHUB_ENV
+
     - id: targets
       shell: bash
       run: |
@@ -34,7 +49,7 @@ runs:
         paths=$(git diff --name-only ${NX_BASE}..${NX_HEAD} | xargs -L1 dirname | sed -e '/^\./d' -e 's@/.*/.*$@@' | sort | uniq)
         #targets=$(git diff --name-only ${NX_BASE}..${NX_HEAD} | xargs -L1 dirname | sed -e '/^\./d' -e 's@/.*$@@' | uniq | jq -ncR '[inputs]')
 
-        project_files = ${{ inputs.files }}
+        project_files="${{ inputs.files }}"
         targets=$(for path in ${paths}; do
           for file in ${project_files}; do
             if [[ -e ${path}/${file} ]]; then
