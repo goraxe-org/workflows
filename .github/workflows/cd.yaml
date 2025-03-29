@@ -40,7 +40,7 @@ jobs:
       - name: 'Install Dependencies'
         run: pnpm install
       - name: Derive appropriate SHAs for base and head for `nx affected` commands
-        uses: nrwl/nx-set-shas@v3
+        uses: nrwl/nx-set-shas@v4
       - name: 'Build images'
         run: |
           git config --local user.name "deployment bot"
