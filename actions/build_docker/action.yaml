@@ -87,13 +87,18 @@ runs:
         cache-to: type=gha,mode=max,scope=${{ inputs.image_name }}
         sbom: true
         provenance: true
+    - run: |
+        echo "uploading artifact"
+        ls -la  ${{ runner.temp }}
+      shell: bash
+      if: ${{ inputs.upload == true  }}
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       if: ${{ inputs.upload == true  }}
       with:
-        name: docker-${{ inputs.image_name}}
-        path: ${{ runner.temp }}/${{ steps.base_name.outputs.name}}.tar
+        name: docker-${ {steps.base_name.outputs.name }}
+        path: ${{ runner.temp }}/${{ steps.base_name.outputs.name }}.tar
         retention-days: 1
 
     - name: "Sign image with a key"
