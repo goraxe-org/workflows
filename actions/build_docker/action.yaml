@@ -31,7 +31,7 @@ inputs:
 outputs:
   build:
     description: The output from the build step
-    value: ${{ steps.build.outputs }}
+    value: ${{ steps.build.outputs.metadata }}
 runs:
   using: composite
   steps:
