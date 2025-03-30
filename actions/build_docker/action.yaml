@@ -71,7 +71,7 @@ runs:
           type=sha,format=long
     - id: base_name
       shell: bash
-      run: echo "name=$(basename ${{ inputs.image_name }}" >> $GITHUB_OUTPUT
+      run: echo "name=$(basename ${{ inputs.image_name }})" >> $GITHUB_OUTPUT
 
     - name: "Build Docker image"
       id: build
