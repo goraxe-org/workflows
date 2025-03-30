@@ -88,11 +88,12 @@ runs:
         sbom: true
         provenance: true
     - run: |
-        echo "uploading artifact"
+        echo "uploading artifact (docker-${{ steps.base_name.outputs.name }}): ${{ inputs.upload }}"
         ls -la  ${{ runner.temp }}
       shell: bash
 
     - name: Upload artifact
+      if: ${{ inputs.upload == true }}
       uses: actions/upload-artifact@v4
       with:
         name: docker-${{ steps.base_name.outputs.name }}
