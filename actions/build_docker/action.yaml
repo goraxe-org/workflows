@@ -92,6 +92,18 @@ runs:
         ls -la  ${{ runner.temp }}
       shell: bash
 
+    - run: |
+        echo "[1] uploading artifact (docker-${{ steps.base_name.outputs.name }}): ${{ inputs.upload }}"
+      shell: bash
+      if: ${{ inputs.upload == 'true' }}
+    - run: |
+        echo "[2] uploading artifact (docker-${{ steps.base_name.outputs.name }}): ${{ inputs.upload }}"
+      shell: bash
+      if: ${{ inputs.upload =! 'false' }}
+    - run: |
+        echo "[3] uploading artifact (docker-${{ steps.base_name.outputs.name }}): ${{ inputs.upload }}"
+      shell: bash
+      if: ${{ inputs.upload  }}
     - name: Upload artifact
       if: ${{ inputs.upload == true }}
       uses: actions/upload-artifact@v4
