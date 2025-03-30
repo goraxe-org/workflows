@@ -99,7 +99,7 @@ runs:
     - run: |
         echo "[2] uploading artifact (docker-${{ steps.base_name.outputs.name }}): ${{ inputs.upload }}"
       shell: bash
-      if: ${{ inputs.upload =! 'false' }}
+      if: ${{ inputs.upload != 'false' }}
     - run: |
         echo "[3] uploading artifact (docker-${{ steps.base_name.outputs.name }}): ${{ inputs.upload }}"
       shell: bash
