@@ -28,6 +28,10 @@ inputs:
   cosign_private_key:
     required: false
     description: cosign private key
+outputs:
+  build:
+    description: The output from the build step
+    value: ${{ steps.build.outputs }}
 runs:
   using: composite
   steps:
