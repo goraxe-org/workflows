@@ -95,7 +95,7 @@ runs:
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: docker-${ {steps.base_name.outputs.name }}
+        name: docker-${{ steps.base_name.outputs.name }}
         path: ${{ runner.temp }}/${{ steps.base_name.outputs.name }}.tar
         retention-days: 1
 
