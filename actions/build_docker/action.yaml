@@ -91,11 +91,9 @@ runs:
         echo "uploading artifact"
         ls -la  ${{ runner.temp }}
       shell: bash
-      if: ${{ inputs.upload == "true"  }}
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
-      if: ${{ inputs.upload == "true"  }}
       with:
         name: docker-${ {steps.base_name.outputs.name }}
         path: ${{ runner.temp }}/${{ steps.base_name.outputs.name }}.tar
