@@ -69,12 +69,15 @@ runs:
           type=ref,event=branch
           type=ref,event=pr
           type=sha,format=long
+    - id: base_name
+      shell: bash
+      run: echo "name=$(basename ${{ inputs.image_name }}" >> $GITHUB_OUTPUT
 
     - name: "Build Docker image"
       id: build
       uses: docker/build-push-action@v6.15.0
       with:
-        outputs: type=docker,dest=${{ runner.temp }}/${{ inputs.image_name}}.tar
+        outputs: type=docker,dest=${{ runner.temp }}/${{ steps.base_name.outputs.name}}.tar
         context: ${{ inputs.context }}
         file: ${{ inputs.file }}
         push: ${{ inputs.push }}
@@ -90,7 +93,7 @@ runs:
       if: ${{ inputs.upload == true  }}
       with:
         name: docker-${{ inputs.image_name}}
-        path: ${{ runner.temp }}/${{ inputs.image_name}}.tar
+        path: ${{ runner.temp }}/${{ steps.base_name.outputs.name}}.tar
         retention-days: 1
 
     - name: "Sign image with a key"
