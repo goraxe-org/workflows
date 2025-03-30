@@ -32,6 +32,9 @@ outputs:
   build:
     description: The output from the build step
     value: ${{ steps.build.outputs.metadata }}
+  meta:
+    description: The output from the build step
+    value: ${{ steps.meta.outputs.json }}
 runs:
   using: composite
   steps:
