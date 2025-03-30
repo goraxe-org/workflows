@@ -1,0 +1,31 @@
+name: "Matrix outputs - read"
+description: "Read outputs for matrix"
+branding:
+  icon: "chevrons-down"
+  color: "white"
+inputs:
+  matrix-step-name:
+    required: true
+    description: "Matrix step name"
+outputs:
+  result:
+    description: "Outputs result"
+    value: "${{ steps.context.outputs.result }}"
+runs:
+  using: "composite"
+  steps:
+    - name: "Setup jq"
+      uses: dcarbone/install-jq-action@v2.1.0
+      with:
+        version: 1.6
+        force: "true"
+
+    - uses: actions/download-artifact@v4
+      with:
+        pattern: "!*.dockerbuild"
+
+    - id: context
+      shell: bash
+      run: |
+        result="$(find . -name ${{ inputs.matrix-step-name }} -maxdepth 2 -exec cat {} \; | jq -c --slurp 'map(to_entries | map(.key as $matrix_key | .value | map_values({($matrix_key): .}))) | flatten | reduce .[] as $item ({}; . * $item)' )"
+        echo "result=${result}" >> $GITHUB_OUTPUT
