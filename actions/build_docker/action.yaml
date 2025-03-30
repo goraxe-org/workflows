@@ -19,6 +19,10 @@ inputs:
     description: "push the image"
     required: false
     default: "true"
+  upload:
+    description: "upload the image as a build artifiact"
+    required: false
+    default: "false"
   release-version:
     description: "version to tag images with"
     required: false
@@ -70,7 +74,7 @@ runs:
       id: build
       uses: docker/build-push-action@v6.15.0
       with:
-        outputs: type=cacheonly
+        outputs: type=docker,dest=${{ runner.temp }}/${{ inputs.image_name}}.tar
         context: ${{ inputs.context }}
         file: ${{ inputs.file }}
         push: ${{ inputs.push }}
@@ -80,6 +84,15 @@ runs:
         cache-to: type=gha,mode=max,scope=${{ inputs.image_name }}
         sbom: true
         provenance: true
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      if: ${{ inputs.upload == true  }}
+      with:
+        name: docker-${{ inputs.image_name}}
+        path: ${{ runner.temp }}/${{ inputs.image_name}}.tar
+        retention-days: 1
+
     - name: "Sign image with a key"
       if: ${{ inputs.push == true && inputs.cosign_private_key && inputs.cosign_password }}
       shell: bash
