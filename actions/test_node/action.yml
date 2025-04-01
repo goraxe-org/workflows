@@ -21,7 +21,9 @@ runs:
       with:
         node-version: 20
         cache: pnpm
-        cache-dependency-path: ${{ inputs.target }}/pnpm-lock.yaml
+        cache-dependency-path: |
+          pnpm-lock.yaml
+          ${{ inputs.target }}/pnpm-lock.yaml
     - name: Get pnpm store directory
       shell: bash
       run: |
