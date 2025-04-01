@@ -7,6 +7,11 @@ on:
         description: Provide sha that should be used if no success found
         type: string
         required: false
+      rebuild:
+        type: boolean
+        default: false
+        required: false
+        description: rebuild all projects
     secrets:
       CODECOV_TOKEN:
         required: false
@@ -40,13 +45,20 @@ jobs:
           fallback-sha: ${{ inputs.fallback-sha }}
         # fallback-sha: 89070420373e8769feafe1e70f4d5d4f5f81cfd0
         # workflow-id: cd.yaml
-      - id: targets
-        run: |
-          echo "base ${NX_BASE}, head: ${NX_HEAD}"
-          targets=$(git diff --name-only ${NX_BASE}..${NX_HEAD} | xargs -L1 dirname | sed -e '/^\./d' -e 's@/.*/.*$@@' | sort | uniq | jq -ncR '[inputs]')
-          #targets=$(git diff --name-only ${NX_BASE}..${NX_HEAD} | xargs -L1 dirname | sed -e '/^\./d' -e 's@/.*$@@' | uniq | jq -ncR '[inputs]')
-          echo "targets=${targets}"
-          echo "targets=${targets}" >> "$GITHUB_OUTPUT"
+
+      - uses: goraxe-org/workflows/actions/get_targets@main
+        id: targets
+        with:
+          all: ${{ inputs.rebuild }}
+      - run: |
+          echo "${{ steps.targets.outputs.targets }}"
+      # - id: targets
+      #   run: |
+      #     echo "base ${NX_BASE}, head: ${NX_HEAD}"
+      #     targets=$(git diff --name-only ${NX_BASE}..${NX_HEAD} | xargs -L1 dirname | sed -e '/^\./d' -e 's@/.*/.*$@@' | sort | uniq | jq -ncR '[inputs]')
+      #     #targets=$(git diff --name-only ${NX_BASE}..${NX_HEAD} | xargs -L1 dirname | sed -e '/^\./d' -e 's@/.*$@@' | uniq | jq -ncR '[inputs]')
+      #     echo "targets=${targets}"
+      #     echo "targets=${targets}" >> "$GITHUB_OUTPUT"
 
   test:
     runs-on: ubuntu-latest
