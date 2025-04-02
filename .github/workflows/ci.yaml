@@ -65,7 +65,7 @@ jobs:
         target: ${{ fromJSON(needs.determine_targets.outputs.targets) }}
       fail-fast: false
     container: ${{ fromJSON(inputs.config)[matrix.target]['container'] || null }}
-    env: ${{ fromJSON(inputs.config)[matrix.target]['environment'] || null }}
+    env: ${{ fromJSON(inputs.config)[matrix.target]['environment'] || {} }}
     steps:
       - uses: actions/checkout@v4
       - uses: goraxe-org/workflows/actions/test@main
