@@ -15,7 +15,10 @@ on:
     secrets:
       CODECOV_TOKEN:
         required: false
-
+    config:
+      required: false
+      description: "allows passing configuration options.  Should be supplied as stringified json object"
+      default: "{}"
   # push:
   #   branches-ignore:
   #     - main
@@ -52,13 +55,6 @@ jobs:
           all: ${{ inputs.rebuild }}
       - run: |
           echo "${{ steps.targets.outputs.targets }}"
-      # - id: targets
-      #   run: |
-      #     echo "base ${NX_BASE}, head: ${NX_HEAD}"
-      #     targets=$(git diff --name-only ${NX_BASE}..${NX_HEAD} | xargs -L1 dirname | sed -e '/^\./d' -e 's@/.*/.*$@@' | sort | uniq | jq -ncR '[inputs]')
-      #     #targets=$(git diff --name-only ${NX_BASE}..${NX_HEAD} | xargs -L1 dirname | sed -e '/^\./d' -e 's@/.*$@@' | uniq | jq -ncR '[inputs]')
-      #     echo "targets=${targets}"
-      #     echo "targets=${targets}" >> "$GITHUB_OUTPUT"
 
   test:
     runs-on: ubuntu-latest
@@ -67,6 +63,7 @@ jobs:
       matrix:
         target: ${{ fromJSON(needs.determine_targets.outputs.targets) }}
       fail-fast: false
+    container: ${{ fromJSON(inputs.config)[matrix.target]['container'] || null }}
     steps:
       - uses: actions/checkout@v4
       - uses: goraxe-org/workflows/actions/test@main
