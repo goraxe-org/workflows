@@ -12,13 +12,14 @@ on:
         default: false
         required: false
         description: rebuild all projects
+      config:
+        required: false
+        description: "allows passing configuration options.  Should be supplied as stringified json object"
+        type: string
+        default: "{}"
     secrets:
       CODECOV_TOKEN:
         required: false
-    config:
-      required: false
-      description: "allows passing configuration options.  Should be supplied as stringified json object"
-      default: "{}"
   # push:
   #   branches-ignore:
   #     - main
