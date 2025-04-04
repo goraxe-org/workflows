@@ -17,6 +17,10 @@ on:
         description: "allows passing configuration options.  Should be supplied as stringified json object"
         type: string
         default: "{}"
+      workflow-id:
+        required: false
+        description: "specify workflow to check for changes against"
+        type: string
     secrets:
       CODECOV_TOKEN:
         required: false
@@ -47,8 +51,8 @@ jobs:
         uses: nrwl/nx-set-shas@v4
         with:
           fallback-sha: ${{ inputs.fallback-sha }}
-        # fallback-sha: 89070420373e8769feafe1e70f4d5d4f5f81cfd0
-        # workflow-id: cd.yaml
+          # fallback-sha: 89070420373e8769feafe1e70f4d5d4f5f81cfd0
+          workflow-id: ${{ inputs.workflow-id }}
 
       - uses: goraxe-org/workflows/actions/get_targets@main
         id: targets
