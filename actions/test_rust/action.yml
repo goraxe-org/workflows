@@ -19,8 +19,10 @@ runs:
       with:
         rustflags: "-D warnings -C instrument-coverage"
         #toolchain: nightly
-        key: ${{ runner.os }}-rust-test-${{ github.repository }}-${{ steps.base_name.outputs.name }}-${{ github.ref_name }}
-        shared-key: ${{ runner.os }}-rust-test-${{ github.repository }}-${{ steps.base_name.outputs.name}}
+        cache-workspaces: |
+          {{ inputs.target }} -> target
+        cache-key: ${{ runner.os }}-rust-test-${{ github.repository }}-${{ steps.base_name.outputs.name }}-${{ github.ref_name }}
+        cache-shared-key: ${{ runner.os }}-rust-test-${{ github.repository }}-${{ steps.base_name.outputs.name}}
     - uses: taiki-e/install-action@nextest
     - name: Install cargo-llvm-cov
       uses: taiki-e/install-action@cargo-llvm-cov
