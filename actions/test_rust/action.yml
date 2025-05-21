@@ -16,6 +16,7 @@ runs:
       with:
         rustflags: "-D warnings -C instrument-coverage"
         toolchain: nightly
+        shared-key: ${{ runner.os }}-rust-test-${{ inputs.target }}
     - uses: taiki-e/install-action@nextest
     - name: Install cargo-llvm-cov
       uses: taiki-e/install-action@cargo-llvm-cov
