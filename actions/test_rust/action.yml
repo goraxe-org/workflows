@@ -30,9 +30,14 @@ runs:
       shell: "bash"
       run: |
         mkdir -p coverage/
+        CONF_FILE="${{ inputs.target }}/.cargo/cov.json"
+        #"
+        if [[ -e ${CONF_FILE} ]]; then
+          COV_ARGS=$(cat ${CONF_FILE} | jq 'to_entries | reduce .[] as {$key, $value}  (null; . + ["--" + $key + " " + $value ] ) | join(" ")' -r)
+        fi
         #export RUSTFLAGS="-Zinstrument-coverage ${RUSTFLAGS}"
         echo "test"
-        cargo llvm-cov nextest --package $(basename  ${{ inputs.target }}) --codecov --output-path coverage/codecov.json
+        cargo llvm-cov nextest ${COV_ARGS} --package $(basename  ${{ inputs.target }}) --codecov --output-path coverage/codecov.json
 
     - name: Upload test results to Codecov
       if: ${{ !cancelled() }}
