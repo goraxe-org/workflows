@@ -32,11 +32,8 @@ runs:
       run: |
         mkdir -p coverage/
         #export RUSTFLAGS="-Zinstrument-coverage ${RUSTFLAGS}"
-        echo "build"
-        cargo build
         echo "test"
         cargo llvm-cov nextest --package $(basename  ${{ inputs.target }}) --codecov --output-path coverage/codecov.json
-        ls -lR
 
     - name: Upload test results to Codecov
       if: ${{ !cancelled() }}
