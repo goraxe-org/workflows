@@ -14,15 +14,14 @@ runs:
     - uses: actions/checkout@v4
     - id: base_name
       shell: bash
-      run: echo "name=$(basename ${{ inputs.image_name }})" >> $GITHUB_OUTPUT
+      run: echo "name=$(basename ${{ inputs.target }})" >> $GITHUB_OUTPUT
     - uses: actions-rust-lang/setup-rust-toolchain@v1.12.0
       with:
         rustflags: "-D warnings -C instrument-coverage"
         #toolchain: nightly
         cache-workspaces: |
           ${{ inputs.target }} -> target
-        cache-key: rust-test-${{ github.repository }}-${{ steps.base_name.outputs.name }}-${{ github.ref_name }}
-        cache-shared-key: rust-test-${{ github.repository }}-${{ steps.base_name.outputs.name}}
+        cache-shared-key: ${{ github.repository }}-${{ steps.base_name.outputs.name}}
     - uses: taiki-e/install-action@nextest
     - name: Install cargo-llvm-cov
       uses: taiki-e/install-action@cargo-llvm-cov
