@@ -23,6 +23,7 @@ runs:
       shell: "bash"
       run: |
         mkdir -p coverage/
+        export RUSTFLAGS="-Zinstrument-coverage ${RUSTFLAGS}"
         echo "build"
         cargo build
         echo "test"
