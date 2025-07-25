@@ -62,7 +62,7 @@ runs:
                 break
             fi
           done
-        done | jq -ncR '[inputs]')
+        done | sed -e '/^\./d' | jq -ncR '[inputs]')
 
         echo "targets=${targets}"
         echo "targets=${targets}" >> "$GITHUB_OUTPUT"
