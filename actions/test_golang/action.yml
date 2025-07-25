@@ -41,7 +41,6 @@ runs:
       run: |
         go install oss.indeed.com/go/go-opine@v1.3.0
         go-opine test -junit junit.go.xml -xmlcov cobertura-coverage.xml -min-coverage 0
-      continue-on-error: true
 
     - name: Upload test results to Codecov
       if: ${{ !cancelled() }}
