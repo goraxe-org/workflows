@@ -49,7 +49,8 @@ runs:
       run: |
         echo "base ${NX_BASE}, head: ${NX_HEAD}"
         # get raw directories that had a change in theme
-        paths=$(git diff --name-only ${NX_BASE}..${NX_HEAD} | xargs -L1 dirname | sed -e '/^\./d' -e 's@/.*/.*$@@' | sort | uniq)
+        paths=$(git diff --name-only ${NX_BASE}..${NX_HEAD} | xargs -L1 dirname | tr / " " | awk '{ print $1  "/" $2 }' | sort | uniq)
+
         #targets=$(git diff --name-only ${NX_BASE}..${NX_HEAD} | xargs -L1 dirname | sed -e '/^\./d' -e 's@/.*$@@' | uniq | jq -ncR '[inputs]')
 
         project_files="${{ inputs.files }}"
