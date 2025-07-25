@@ -19,6 +19,8 @@ runs:
           echo "lang=rust" >> $GITHUB_OUTPUT
         elif [ -f "package.json" ]; then
           echo "lang=node" >> $GITHUB_OUTPUT
+        elif [ -f "go.mod" ]; then
+          echo "lang=golang" >> $GITHUB_OUTPUT
         fi
     - if: ${{ steps.test_system.outputs.lang == 'rust' }}
       uses: goraxe-org/workflows/actions/test_rust@main
@@ -27,6 +29,11 @@ runs:
         CODECOV_TOKEN: ${{ inputs.CODECOV_TOKEN }}
     - if: ${{ steps.test_system.outputs.lang == 'node' }}
       uses: goraxe-org/workflows/actions/test_node@main
+      with:
+        target: ${{ inputs.target }}
+        CODECOV_TOKEN: ${{ inputs.CODECOV_TOKEN }}
+    - if: ${{ steps.test_system.outputs.lang == 'golang' }}
+      uses: goraxe-org/workflows/actions/test_golang@main
       with:
         target: ${{ inputs.target }}
         CODECOV_TOKEN: ${{ inputs.CODECOV_TOKEN }}

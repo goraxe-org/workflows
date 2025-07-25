@@ -1,0 +1,65 @@
+name: Test Golang
+description: Test Golang
+inputs:
+  target:
+    description: "directory to run tests in"
+    required: true
+  CODECOV_TOKEN:
+    required: false
+    description: "the token for codecov"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v4
+    - id: base_name
+      shell: bash
+      run: echo "name=$(basename ${{ inputs.target }})" >> $GITHUB_OUTPUT
+
+    - name: Setup Golang with cache
+      uses: magnetikonline/action-golang-cache@v5
+      with:
+        go-version-file: ${{ inputs.target }}/go.mod
+    - name: Determine Golang cache paths and construct cache key
+      id: golang-env
+      run: |
+        echo "cache-path=$(go env GOPATH)/bin" >>"$GITHUB_OUTPUT"
+        cacheKeyRoot="${{ runner.os }}-bin-golang-"
+        echo "cache-key-restore=$cacheKeyRoot" >>"$GITHUB_OUTPUT"
+        echo "cache-key=${cacheKeyRoot}${{ hashFiles('${{ inputs.target }}/**/go.sum') }}" >>"$GITHUB_OUTPUT"
+      shell: bash
+    - name: Setup Golang cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          ${{ steps.golang-env.outputs.cache-path }}
+        key: ${{ steps.golang-env.outputs.cache-key }}
+        restore-keys: |
+          ${{ steps.golang-env.outputs.cache-key-restore }}
+    - shell: "bash"
+      working-directory: ${{ inputs.target }}
+      run: |
+        go install oss.indeed.com/go/go-opine@v1.3.0
+        go-opine test -junit junit.go.xml -xmlcov cobertura-coverage.xml -min-coverage 0
+      continue-on-error: true
+
+    - name: Upload test results to Codecov
+      if: ${{ !cancelled() }}
+      uses: codecov/test-results-action@v1
+      with:
+        token: ${{ inputs.CODECOV_TOKEN }}
+        directory: ${{ inputs.target }}
+
+    - # Codecov
+      # You may pin to the exact commit or the version.
+      # uses: codecov/codecov-action@81cd2dc8148241f03f5839d295e000b8f761e378
+      uses: codecov/codecov-action@v5
+      with:
+        # Repository upload token - get it from codecov.io. Required only for private repositories
+        # token:  # optional
+        # Specify whether the Codecov output should be verbose
+        token: ${{ inputs.CODECOV_TOKEN }}
+        slug: ${{ github.repository }}
+        verbose: true
+        # directory: coverage
+        directory: ${{ inputs.target }}
