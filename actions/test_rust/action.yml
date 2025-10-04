@@ -15,7 +15,7 @@ runs:
     - id: base_name
       shell: bash
       run: echo "name=$(basename ${{ inputs.target }})" >> $GITHUB_OUTPUT
-    - uses: actions-rust-lang/setup-rust-toolchain@v1.12.0
+    - uses: actions-rust-lang/setup-rust-toolchain@v1.15.2
       with:
         rustflags: "-D warnings -C instrument-coverage"
         #toolchain: nightly
