@@ -32,7 +32,7 @@ jobs:
   pre-commit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
     # validate commit message
   determine_targets:
     runs-on: ubuntu-latest
@@ -42,7 +42,7 @@ jobs:
       contents: read
       actions: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
         # this could be replaced by getting the most recent tag, then
@@ -71,7 +71,7 @@ jobs:
     container: ${{ fromJSON(inputs.config)[matrix.target]['container'] || null }}
     env: ${{ fromJSON(inputs.config)[matrix.target]['environment'] || fromJSON('{}') }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: goraxe-org/workflows/actions/test@main
         with:
           target: ${{ matrix.target }}
