@@ -29,7 +29,7 @@ runs:
         echo "cache-key=${cacheKeyRoot}${{ hashFiles('${{ inputs.target }}/**/go.sum') }}" >>"$GITHUB_OUTPUT"
       shell: bash
     - name: Setup Golang cache
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: |
           ${{ steps.golang-env.outputs.cache-path }}
