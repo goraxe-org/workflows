@@ -75,7 +75,7 @@ runs:
 
     - name: "Build Docker image"
       id: build
-      uses: docker/build-push-action@v6.15.0
+      uses: docker/build-push-action@v6.19.2
       with:
         outputs: type=oci,dest=${{ runner.temp }}/${{ steps.base_name.outputs.name}}.tar
         context: ${{ inputs.context }}
