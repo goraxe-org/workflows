@@ -12,7 +12,9 @@
 #   1. builds and pushes the image with docker/build-push-action, tags and
 #      labels from docker/metadata-action;
 #   2. records the pushed digest;
-#   3. signs <image>@<digest> with `cosign sign --yes` (keyless or key);
+#   3. signs <image>@<digest> with `cosign sign --yes` (keyless or key),
+#      in both modes in the legacy cosign format (.sig/.att tags) that
+#      Kyverno's default Cosign verifier reads;
 #   4. generates an SPDX SBOM with syft (anchore/sbom-action) and attaches it
 #      with `cosign attest --type spdxjson`;
 #   5. attaches a SLSA v1 build provenance predicate with
@@ -298,11 +300,29 @@ jobs:
           identity="${GITHUB_SERVER_URL}/$(jq -r .job_workflow_ref "$RUNNER_TEMP/oidc-claims.json")"
           echo "identity=$identity" >> "$GITHUB_OUTPUT"
 
+      # Keyless mode flags (cosign v3), used by every keyless sign/attest
+      # below. Fulcio certificate and a public Rekor entry as usual, stored in
+      # the legacy format:
+      #   --use-signing-config=false  no TUF signing config; cosign then uses
+      #                               its default --fulcio-url
+      #                               (fulcio.sigstore.dev) and --rekor-url
+      #                               (rekor.sigstore.dev). v3 refuses a
+      #                               signing config with the legacy format.
+      #   --new-bundle-format=false   legacy .sig/.att tags, the Rekor bundle
+      #                               in the dev.sigstore.cosign/bundle
+      #                               annotation. Kyverno 1.19.1 cannot find
+      #                               v3's default bundle on GHCR (no
+      #                               referrers API), kyverno/kyverno#16664.
+      # Revert to the cosign v3 defaults (and type: SigstoreBundle in Kyverno)
+      # once #16664 is fixed.
       - name: Sign the image (keyless)
         if: inputs.push && steps.mode.outputs.signing == 'keyless'
         env:
           IMAGE: ${{ steps.result.outputs.image }}
-        run: cosign sign --yes "$IMAGE"
+        run: |
+          cosign sign --yes \
+            --use-signing-config=false --new-bundle-format=false \
+            "$IMAGE"
 
       # Key mode flags (cosign v3), used by every key-mode sign/attest below:
       #   --key env://COSIGN_PRIVATE_KEY  encrypted key from the secret
@@ -346,7 +366,10 @@ jobs:
         if: inputs.push && steps.mode.outputs.signing == 'keyless'
         env:
           IMAGE: ${{ steps.result.outputs.image }}
-        run: cosign attest --yes --type spdxjson --predicate "$RUNNER_TEMP/sbom.spdx.json" "$IMAGE"
+        run: |
+          cosign attest --yes \
+            --use-signing-config=false --new-bundle-format=false \
+            --type spdxjson --predicate "$RUNNER_TEMP/sbom.spdx.json" "$IMAGE"
 
       - name: Attest the SBOM (key, no transparency log)
         if: inputs.push && steps.mode.outputs.signing == 'key'
@@ -425,7 +448,10 @@ jobs:
         if: inputs.push && steps.mode.outputs.signing == 'keyless'
         env:
           IMAGE: ${{ steps.result.outputs.image }}
-        run: cosign attest --yes --type slsaprovenance1 --predicate "$RUNNER_TEMP/provenance.json" "$IMAGE"
+        run: |
+          cosign attest --yes \
+            --use-signing-config=false --new-bundle-format=false \
+            --type slsaprovenance1 --predicate "$RUNNER_TEMP/provenance.json" "$IMAGE"
 
       - name: Attest build provenance (key, no transparency log)
         if: inputs.push && steps.mode.outputs.signing == 'key'
@@ -450,6 +476,7 @@ jobs:
             --certificate-oidc-issuer "$OIDC_ISSUER"
             --certificate-github-workflow-repository "$GITHUB_REPOSITORY"
             --certificate-github-workflow-sha "$GITHUB_SHA"
+            --new-bundle-format=false
           )
           cosign verify "${verify_flags[@]}" "$IMAGE" > /dev/null
           cosign verify-attestation --type spdxjson "${verify_flags[@]}" "$IMAGE" > /dev/null
