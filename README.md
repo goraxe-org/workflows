@@ -142,6 +142,10 @@ The matching `cosign.pub` (`-----BEGIN PUBLIC KEY-----`) is not secret: pass
 it as `cosign-public-key` (for example from an Actions variable,
 `vars.COSIGN_PUBLIC_KEY`) and put it in the Kyverno policy.
 
+The current goraxe key lives in Vault at `kvv2/cosign/image-signing`
+(field `public_key`); its PEM file has sha256
+`bab823c288ca28a70f767acc2dee92677ae5bb137b64824bb50621325b79108e`.
+
 Where to store them:
 
 - **goraxe-org repositories**: organization secrets `COSIGN_PRIVATE_KEY` and
@@ -291,7 +295,8 @@ key-mode signatures have neither.
         - keys:
             publicKeys: |-
               -----BEGIN PUBLIC KEY-----
-              ...
+              MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYkt9YRTFbMVFYr5mNfoB4r3hFrIJ
+              X8gVjkTyrH61XQBJ3RakPIJv+hCRzgNtsa1kskFYluijKDX7xNL9LYme+Q==
               -----END PUBLIC KEY-----
             rekor:
               ignoreTlog: true
@@ -304,7 +309,8 @@ key-mode signatures have neither.
             - keys:
                 publicKeys: |-
                   -----BEGIN PUBLIC KEY-----
-                  ...
+                  MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYkt9YRTFbMVFYr5mNfoB4r3hFrIJ
+                  X8gVjkTyrH61XQBJ3RakPIJv+hCRzgNtsa1kskFYluijKDX7xNL9LYme+Q==
                   -----END PUBLIC KEY-----
                 rekor:
                   ignoreTlog: true
