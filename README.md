@@ -26,7 +26,9 @@ On every push run it:
 
 1. builds and pushes the image (tags and labels from `docker/metadata-action`);
 2. records the pushed digest;
-3. `cosign sign <image>@<digest>` (keyless, or with the key);
+3. `cosign sign <image>@<digest>` (keyless, or with the key), in both modes
+   in the legacy cosign format (`.sig`/`.att` tags) that Kyverno's default
+   `Cosign` verifier reads;
 4. generates an SPDX SBOM with syft (`anchore/sbom-action`) and attaches it
    with `cosign attest --type spdxjson`;
 5. attaches SLSA v1 build provenance with `cosign attest --type slsaprovenance1`;
@@ -166,9 +168,39 @@ Where to store them:
 
 ### Signing modes
 
-**keyless** (`cosign sign --yes`, `cosign attest --yes`, cosign v3
-defaults): Fulcio certificate for the job's OIDC identity, Rekor entry, and
-cosign v3's default storage, a Sigstore bundle attached as an OCI referrer.
+**keyless** signs, and attests the SBOM and provenance, with:
+
+```sh
+cosign sign   --yes --use-signing-config=false --new-bundle-format=false <image>@<digest>
+cosign attest --yes --use-signing-config=false --new-bundle-format=false \
+  --type spdxjson|slsaprovenance1 --predicate <file> <image>@<digest>
+```
+
+- Fulcio certificate for the job's OIDC identity and an entry in the
+  **public** Rekor log, as with the cosign defaults.
+- `--new-bundle-format=false`: write the **legacy** cosign format, a
+  `sha256-<digest>.sig` tag and a `sha256-<digest>.att` tag, with the Rekor
+  bundle (signed entry timestamp) in each layer's
+  `dev.sigstore.cosign/bundle` annotation and the certificate in
+  `dev.sigstore.cosign/certificate`. Kyverno verifies it with the default
+  `type: Cosign` keyless entry (see [Verifying, Keyless](#keyless)).
+- `--use-signing-config=false`: cosign v3 refuses the TUF signing config
+  with the legacy format ("must provide --new-bundle-format or --bundle").
+  Without it, cosign uses its default `--fulcio-url`
+  (`https://fulcio.sigstore.dev`) and `--rekor-url`
+  (`https://rekor.sigstore.dev`), checked in the cosign v3.0.6 source.
+
+Why not the cosign v3 default (a Sigstore bundle attached as an OCI
+referrer): Kyverno 1.19.1 reads that only with `type: SigstoreBundle`, and
+that verifier cannot find the bundle on GHCR. GHCR has no OCI referrers API,
+and the referrers fallback index entries cosign writes there are typed
+`application/vnd.oci.empty.v1+json`, which Kyverno skips
+([kyverno/kyverno#16664](https://github.com/kyverno/kyverno/issues/16664)).
+
+> **Revert when #16664 is fixed:** drop `--use-signing-config=false
+--new-bundle-format=false` from the keyless steps (and from the keyless
+> verify step), and switch the Kyverno keyless attestors to
+> `type: SigstoreBundle`.
 
 **key** signs, and attests the SBOM and provenance, with:
 
@@ -244,17 +276,24 @@ certificate's GitHub workflow repository extension (OID
 cosign verify ghcr.io/goraxe-org/<repo>@sha256:<digest> \
   --certificate-identity-regexp '^https://github\.com/goraxe-org/workflows/\.github/workflows/build-sign\.yaml@refs/heads/main$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-github-workflow-repository goraxe-org/<repo>
+  --certificate-github-workflow-repository goraxe-org/<repo> \
+  --new-bundle-format=false
 
 cosign verify-attestation --type spdxjson         <same flags> ghcr.io/goraxe-org/<repo>@sha256:<digest>
 cosign verify-attestation --type slsaprovenance1  <same flags> ghcr.io/goraxe-org/<repo>@sha256:<digest>
 ```
 
+`--new-bundle-format=false` reads the legacy `.sig`/`.att` tags that keyless
+mode writes. The Rekor inclusion is checked offline against the bundle
+annotation.
+
 Add `--certificate-github-workflow-ref refs/heads/main` (or a tag) to accept
 only images built from that ref of the calling repository. Private packages
 need `docker login ghcr.io` (a token with `read:packages`) first.
 
-Kyverno (`verifyImages`, keyless) equivalent:
+Kyverno (`verifyImages`, keyless) equivalent. It is the default
+`type: Cosign` verifier (no `type:` field), which reads the legacy tags;
+`rekor.url` is required for keyless entries:
 
 ```yaml
 - imageReferences:
