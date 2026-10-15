@@ -1,0 +1,497 @@
+# build-sign: build a container image, push it to GHCR, and sign it with
+# cosign, in one of two modes (input `signing`):
+#   keyless  Sigstore Fulcio certificate from the job's GitHub OIDC token,
+#            entries in the public Rekor log. For public repositories.
+#   key      cosign key pair from the COSIGN_PRIVATE_KEY / COSIGN_PASSWORD
+#            secrets, NO transparency-log upload: nothing about the image
+#            reaches Rekor, Fulcio or the CT logs. For private repositories.
+#   auto     (default) key when the calling repository is private, else
+#            keyless.
+#
+# On a push run (push: true) the workflow:
+#   1. builds and pushes the image with docker/build-push-action, tags and
+#      labels from docker/metadata-action;
+#   2. records the pushed digest;
+#   3. signs <image>@<digest> with `cosign sign --yes` (keyless or key);
+#   4. generates an SPDX SBOM with syft (anchore/sbom-action) and attaches it
+#      with `cosign attest --type spdxjson`;
+#   5. attaches a SLSA v1 build provenance predicate with
+#      `cosign attest --type slsaprovenance1` (see README.md for why cosign
+#      and not actions/attest-build-provenance);
+#   6. verifies the signature and both attestations (keyless: against this
+#      run's exact signing identity; key: against the `cosign-public-key`
+#      input, skipped with a notice when that is empty), and outputs
+#      `digest`, `image` (name@sha256:...) and `signing`.
+#
+# With push: false it only builds (no login, no push, no signing). Use that
+# for pull_request runs.
+#
+# Keyless: the signing identity (Fulcio certificate SAN) is THIS reusable workflow,
+# not the caller's workflow:
+#   https://github.com/goraxe-org/workflows/.github/workflows/build-sign.yaml@<ref>
+# The caller's repository is in the certificate's GitHub workflow
+# repository extension, so verification must pin both. See README.md.
+#
+# Callers must grant (permissions are static, so grant them on pull_request
+# runs too even though nothing is pushed or signed there):
+#   permissions:
+#     contents: read   # checkout
+#     packages: write  # push to ghcr.io and attach signatures/attestations
+#     id-token: write  # GitHub OIDC: keyless signing, provenance claims
+# (id-token: write is needed in key mode too: job permissions cannot depend
+# on the mode, and the provenance predicate is built from the OIDC claims.
+# In key mode the token is only read from GitHub, never sent to Sigstore.)
+name: build-sign
+
+on:
+  workflow_call:
+    inputs:
+      registry:
+        description: Registry to push to.
+        type: string
+        required: false
+        default: ghcr.io
+      image-name:
+        description: >-
+          Image name without the registry, e.g. "goraxe-org/foo". Defaults to
+          the caller's repository. Lowercased before use.
+        type: string
+        required: false
+        default: ""
+      context:
+        description: Docker build context.
+        type: string
+        required: false
+        default: .
+      file:
+        description: Path to the Dockerfile. Defaults to {context}/Dockerfile.
+        type: string
+        required: false
+        default: ""
+      platforms:
+        description: Comma-separated target platforms, e.g. "linux/amd64,linux/arm64".
+        type: string
+        required: false
+        default: linux/amd64
+      tags:
+        description: >-
+          docker/metadata-action `tags` configuration (one rule per line).
+        type: string
+        required: false
+        default: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=sha,format=long
+      flavor:
+        description: docker/metadata-action `flavor` configuration.
+        type: string
+        required: false
+        default: ""
+      labels:
+        description: Extra labels (one key=value per line), merged with the generated OCI labels.
+        type: string
+        required: false
+        default: ""
+      build-args:
+        description: >-
+          Build args, one KEY=value per line. Recorded in the provenance
+          predicate, so never pass secrets here.
+        type: string
+        required: false
+        default: ""
+      push:
+        description: Push, sign and attest. false = build only (for pull_request runs).
+        type: boolean
+        required: false
+        default: true
+      signing:
+        description: >-
+          Signing mode: "keyless" (Fulcio + public Rekor), "key" (cosign key
+          pair from the COSIGN_PRIVATE_KEY/COSIGN_PASSWORD secrets, no
+          transparency log), or "auto" = key for private repositories,
+          keyless otherwise.
+        type: string
+        required: false
+        default: auto
+      cosign-public-key:
+        description: >-
+          Key mode only: the cosign public key (PEM, not secret) used to
+          verify the signature and attestations after signing. Empty = skip
+          that self-check with a notice.
+        type: string
+        required: false
+        default: ""
+    secrets:
+      COSIGN_PRIVATE_KEY:
+        description: >-
+          Key mode only: cosign encrypted private key, the PEM content of
+          cosign.key ("-----BEGIN ENCRYPTED SIGSTORE PRIVATE KEY-----").
+        required: false
+      COSIGN_PASSWORD:
+        description: Key mode only, the password of COSIGN_PRIVATE_KEY.
+        required: false
+    outputs:
+      digest:
+        description: Digest of the pushed image (sha256:...). Empty when push is false.
+        value: ${{ jobs.build-sign.outputs.digest }}
+      image:
+        description: Pushed image pinned by digest (registry/name@sha256:...). Empty when push is false.
+        value: ${{ jobs.build-sign.outputs.image }}
+      signing:
+        description: Resolved signing mode, "keyless" or "key" (also set when push is false).
+        value: ${{ jobs.build-sign.outputs.signing }}
+
+permissions: {}
+
+env:
+  COSIGN_VERSION: v3.0.6
+  OIDC_ISSUER: https://token.actions.githubusercontent.com
+
+jobs:
+  build-sign:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # checkout
+      packages: write # push to ghcr.io, attach signatures and attestations
+      id-token: write # GitHub OIDC: keyless signing, provenance claims
+    outputs:
+      digest: ${{ steps.result.outputs.digest }}
+      image: ${{ steps.result.outputs.image }}
+      signing: ${{ steps.mode.outputs.signing }}
+    steps:
+      # Resolve `signing` first, and in key mode check the secrets before
+      # anything is built or pushed. auto fails closed: if the event payload
+      # does not say whether the repository is private, it refuses to guess
+      # (guessing keyless would publish a private repository to Rekor).
+      - name: Resolve signing mode
+        id: mode
+        env:
+          SIGNING: ${{ inputs.signing }}
+          REPO_PRIVATE: ${{ github.event.repository.private }}
+          PUSH: ${{ inputs.push }}
+          HAS_KEY: ${{ secrets.COSIGN_PRIVATE_KEY != '' }}
+          HAS_PASSWORD: ${{ secrets.COSIGN_PASSWORD != '' }}
+        run: |
+          set -euo pipefail
+          case "$SIGNING" in
+            keyless | key) mode="$SIGNING" ;;
+            auto)
+              case "$REPO_PRIVATE" in
+                true) mode=key ;;
+                false) mode=keyless ;;
+                *)
+                  echo "::error::signing=auto, but this '${GITHUB_EVENT_NAME}' event does not say whether ${GITHUB_REPOSITORY} is private. Set the signing input to keyless or key."
+                  exit 1
+                  ;;
+              esac
+              ;;
+            *)
+              echo "::error::signing must be auto, keyless or key, got '${SIGNING}'"
+              exit 1
+              ;;
+          esac
+          if [ "$mode" = key ] && [ "$PUSH" = true ]; then
+            missing=""
+            [ "$HAS_KEY" = true ] || missing="$missing COSIGN_PRIVATE_KEY"
+            [ "$HAS_PASSWORD" = true ] || missing="$missing COSIGN_PASSWORD"
+            if [ -n "$missing" ]; then
+              echo "::error::signing=key needs the secrets:${missing}. Pass them from the calling job (secrets: inherit, or map them under secrets:); see the goraxe-org/workflows README, build-sign key mode."
+              exit 1
+            fi
+          fi
+          echo "signing=$mode" >> "$GITHUB_OUTPUT"
+          echo "Signing mode: $mode (input: $SIGNING, repository private: ${REPO_PRIVATE:-unknown})"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Image repository
+        id: repo
+        env:
+          REGISTRY: ${{ inputs.registry }}
+          IMAGE_NAME: ${{ inputs.image-name != '' && inputs.image-name || github.repository }}
+        run: |
+          repo="${REGISTRY}/${IMAGE_NAME}"
+          echo "ref=${repo,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU (non-amd64 platforms)
+        if: inputs.platforms != 'linux/amd64'
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to ${{ inputs.registry }}
+        if: inputs.push
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Tags and labels
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ steps.repo.outputs.ref }}
+          tags: ${{ inputs.tags }}
+          flavor: ${{ inputs.flavor }}
+          labels: ${{ inputs.labels }}
+
+      # BuildKit's own provenance/SBOM attestations are turned off: they are
+      # unsigned, and they turn a single-platform image into an index. The
+      # signed SBOM and provenance are attached with cosign below instead.
+      - name: Build${{ inputs.push && ' and push' || '' }}
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.file }}
+          platforms: ${{ inputs.platforms }}
+          build-args: ${{ inputs.build-args }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          push: ${{ inputs.push }}
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=${{ steps.repo.outputs.ref }}
+          cache-to: type=gha,mode=max,scope=${{ steps.repo.outputs.ref }}
+
+      - name: Record digest
+        if: inputs.push
+        id: result
+        env:
+          REPO: ${{ steps.repo.outputs.ref }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          case "$DIGEST" in
+            sha256:*) ;;
+            *) echo "::error::build-push-action returned no digest: '$DIGEST'"; exit 1 ;;
+          esac
+          {
+            echo "digest=$DIGEST"
+            echo "image=$REPO@$DIGEST"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        if: inputs.push
+        with:
+          cosign-release: ${{ env.COSIGN_VERSION }}
+
+      # The claims of this job's GitHub OIDC token are what Fulcio puts in the
+      # signing certificate. job_workflow_ref (this reusable workflow) is the
+      # signing identity; it is not exposed as a context or env variable.
+      # In key mode the claims only fill the provenance predicate: the token
+      # is fetched from GitHub and decoded here, never sent to Sigstore.
+      - name: Read OIDC claims
+        if: inputs.push
+        id: oidc
+        run: |
+          set -euo pipefail
+          token="$(curl -sSf -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sigstore" | jq -r .value)"
+          echo "::add-mask::$token"
+          payload="$(printf '%s' "$token" | cut -d. -f2 | tr '_-' '/+')"
+          while [ $(( ${#payload} % 4 )) -ne 0 ]; do payload="${payload}="; done
+          printf '%s' "$payload" | base64 -d > "$RUNNER_TEMP/oidc-claims.json"
+          identity="${GITHUB_SERVER_URL}/$(jq -r .job_workflow_ref "$RUNNER_TEMP/oidc-claims.json")"
+          echo "identity=$identity" >> "$GITHUB_OUTPUT"
+
+      - name: Sign the image (keyless)
+        if: inputs.push && steps.mode.outputs.signing == 'keyless'
+        env:
+          IMAGE: ${{ steps.result.outputs.image }}
+        run: cosign sign --yes "$IMAGE"
+
+      # Key mode flags (cosign v3), used by every key-mode sign/attest below:
+      #   --key env://COSIGN_PRIVATE_KEY  encrypted key from the secret
+      #                                   (COSIGN_PASSWORD decrypts it)
+      #   --tlog-upload=false             no Rekor entry (deprecated in v3 but
+      #                                   still honoured; prints a warning)
+      #   --use-signing-config=false      no TUF signing config (it would
+      #                                   point at Rekor, and v3 rejects
+      #                                   --tlog-upload=false with it)
+      #   --new-bundle-format=false       legacy .sig/.att tags, which
+      #                                   Kyverno's default Cosign verifier
+      #                                   reads; v3's default OCI referrer
+      #                                   bundle needs type: SigstoreBundle
+      # With these, cosign contacts only the registry (no TUF, Fulcio or
+      # Rekor), and the signature carries no Rekor bundle annotation.
+      - name: Sign the image (key, no transparency log)
+        if: inputs.push && steps.mode.outputs.signing == 'key'
+        env:
+          IMAGE: ${{ steps.result.outputs.image }}
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          cosign sign --yes --key env://COSIGN_PRIVATE_KEY \
+            --tlog-upload=false --use-signing-config=false --new-bundle-format=false \
+            "$IMAGE"
+
+      - name: Generate SPDX SBOM
+        if: inputs.push
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: ${{ steps.result.outputs.image }}
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ github.token }}
+          format: spdx-json
+          output-file: ${{ runner.temp }}/sbom.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+          dependency-snapshot: false
+
+      - name: Attest the SBOM (keyless)
+        if: inputs.push && steps.mode.outputs.signing == 'keyless'
+        env:
+          IMAGE: ${{ steps.result.outputs.image }}
+        run: cosign attest --yes --type spdxjson --predicate "$RUNNER_TEMP/sbom.spdx.json" "$IMAGE"
+
+      - name: Attest the SBOM (key, no transparency log)
+        if: inputs.push && steps.mode.outputs.signing == 'key'
+        env:
+          IMAGE: ${{ steps.result.outputs.image }}
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          cosign attest --yes --key env://COSIGN_PRIVATE_KEY \
+            --tlog-upload=false --use-signing-config=false --new-bundle-format=false \
+            --type spdxjson --predicate "$RUNNER_TEMP/sbom.spdx.json" "$IMAGE"
+
+      # SLSA v1 provenance in the same shape actions/attest-build-provenance
+      # produces (buildType actions.github.io/buildtypes/workflow/v1), built
+      # from the OIDC claims, plus the build inputs.
+      - name: Build provenance predicate
+        if: inputs.push
+        env:
+          BUILD_CONTEXT: ${{ inputs.context }}
+          BUILD_FILE: ${{ inputs.file }}
+          BUILD_PLATFORMS: ${{ inputs.platforms }}
+          BUILD_ARGS: ${{ inputs.build-args }}
+        run: |
+          set -euo pipefail
+          jq -n \
+            --slurpfile claims "$RUNNER_TEMP/oidc-claims.json" \
+            --arg server "$GITHUB_SERVER_URL" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            --arg attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg context "$BUILD_CONTEXT" \
+            --arg file "$BUILD_FILE" \
+            --arg platforms "$BUILD_PLATFORMS" \
+            --arg build_args "$BUILD_ARGS" '
+            $claims[0] as $c
+            | ($c.workflow_ref | sub("^[^/]+/[^/]+/"; "") | sub("@.*$"; "")) as $path
+            | {
+                buildDefinition: {
+                  buildType: "https://actions.github.io/buildtypes/workflow/v1",
+                  externalParameters: {
+                    workflow: {
+                      ref: $c.ref,
+                      repository: "\($server)/\($c.repository)",
+                      path: $path
+                    },
+                    build: {
+                      context: $context,
+                      file: $file,
+                      platforms: $platforms,
+                      buildArgs: ($build_args | split("\n") | map(select(length > 0)))
+                    }
+                  },
+                  internalParameters: {
+                    github: {
+                      event_name: $c.event_name,
+                      repository_id: $c.repository_id,
+                      repository_owner_id: $c.repository_owner_id,
+                      runner_environment: $c.runner_environment
+                    }
+                  },
+                  resolvedDependencies: [
+                    {
+                      uri: "git+\($server)/\($c.repository)@\($c.ref)",
+                      digest: { gitCommit: $c.sha }
+                    }
+                  ]
+                },
+                runDetails: {
+                  builder: { id: "\($server)/\($c.job_workflow_ref)" },
+                  metadata: {
+                    invocationId: "\($server)/\($c.repository)/actions/runs/\($run_id)/attempts/\($attempt)"
+                  }
+                }
+              }' > "$RUNNER_TEMP/provenance.json"
+
+      - name: Attest build provenance (keyless)
+        if: inputs.push && steps.mode.outputs.signing == 'keyless'
+        env:
+          IMAGE: ${{ steps.result.outputs.image }}
+        run: cosign attest --yes --type slsaprovenance1 --predicate "$RUNNER_TEMP/provenance.json" "$IMAGE"
+
+      - name: Attest build provenance (key, no transparency log)
+        if: inputs.push && steps.mode.outputs.signing == 'key'
+        env:
+          IMAGE: ${{ steps.result.outputs.image }}
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          cosign attest --yes --key env://COSIGN_PRIVATE_KEY \
+            --tlog-upload=false --use-signing-config=false --new-bundle-format=false \
+            --type slsaprovenance1 --predicate "$RUNNER_TEMP/provenance.json" "$IMAGE"
+
+      - name: Verify signature and attestations (keyless)
+        if: inputs.push && steps.mode.outputs.signing == 'keyless'
+        env:
+          IMAGE: ${{ steps.result.outputs.image }}
+          IDENTITY: ${{ steps.oidc.outputs.identity }}
+        run: |
+          set -euo pipefail
+          verify_flags=(
+            --certificate-identity "$IDENTITY"
+            --certificate-oidc-issuer "$OIDC_ISSUER"
+            --certificate-github-workflow-repository "$GITHUB_REPOSITORY"
+            --certificate-github-workflow-sha "$GITHUB_SHA"
+          )
+          cosign verify "${verify_flags[@]}" "$IMAGE" > /dev/null
+          cosign verify-attestation --type spdxjson "${verify_flags[@]}" "$IMAGE" > /dev/null
+          cosign verify-attestation --type slsaprovenance1 "${verify_flags[@]}" "$IMAGE" > /dev/null
+          {
+            echo "### Signed image"
+            echo
+            echo "- image: \`$IMAGE\`"
+            echo "- signing identity: \`$IDENTITY\`"
+            echo "- attestations: \`spdxjson\`, \`slsaprovenance1\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Offline check against the public key: --insecure-ignore-tlog skips
+      # the Rekor lookup, and --new-bundle-format=false reads the legacy
+      # .sig/.att tags (what was written above, and what Kyverno reads).
+      - name: Verify signature and attestations (key)
+        if: inputs.push && steps.mode.outputs.signing == 'key'
+        env:
+          IMAGE: ${{ steps.result.outputs.image }}
+          PUBLIC_KEY: ${{ inputs.cosign-public-key }}
+        run: |
+          set -euo pipefail
+          if [ -z "$PUBLIC_KEY" ]; then
+            echo "::notice::cosign-public-key is not set: signature and attestations were NOT verified after signing."
+            verified="no (cosign-public-key not set)"
+          else
+            printf '%s\n' "$PUBLIC_KEY" > "$RUNNER_TEMP/cosign.pub"
+            verify_flags=(
+              --key "$RUNNER_TEMP/cosign.pub"
+              --insecure-ignore-tlog=true
+              --new-bundle-format=false
+            )
+            cosign verify "${verify_flags[@]}" "$IMAGE" > /dev/null
+            cosign verify-attestation --type spdxjson "${verify_flags[@]}" "$IMAGE" > /dev/null
+            cosign verify-attestation --type slsaprovenance1 "${verify_flags[@]}" "$IMAGE" > /dev/null
+            verified="yes, against cosign-public-key"
+          fi
+          {
+            echo "### Signed image"
+            echo
+            echo "- image: \`$IMAGE\`"
+            echo "- signing: cosign key pair, no transparency log"
+            echo "- verified: $verified"
+            echo "- attestations: \`spdxjson\`, \`slsaprovenance1\`"
+          } >> "$GITHUB_STEP_SUMMARY"
