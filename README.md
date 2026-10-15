@@ -6,6 +6,9 @@ Shared GitHub Actions for goraxe-org repositories.
 - `.github/workflows/ci.yaml`: reusable CI workflow (nx affected targets).
 - `.github/workflows/build-sign.yaml`: reusable build, push and sign
   workflow for container images (below).
+- `.github/workflows/sign.yaml`: reusable sign-only workflow for an image
+  you built and pushed yourself
+  (see [Sign an image you built yourself](#sign-an-image-you-built-yourself)).
 
 This repository is **public**, so any repository can call its reusable
 workflows: public and private goraxe-org repositories, and repositories
@@ -373,3 +376,191 @@ the image. Scope the policy with `imageReferences`.
   must not call this workflow from fork PRs.
 - cosign is v3.0.6, the same as the repositories that already sign
   (karpenter-provider-vultr, cost-exporter, arc-runner-rust).
+
+## Sign an image you built yourself
+
+`.github/workflows/sign.yaml` signs an image that **your own job** already
+built and pushed, and attaches the same SBOM and provenance attestations as
+build-sign. Use it when build-sign cannot build the image: self-hosted or
+ARC runners, a remote buildx driver, a registry cache, extra
+`build-contexts`, and so on. Your build job pushes the image and exports its
+digest; a second job calls `sign.yaml` with that digest.
+
+It uses the same signing modes, cosign v3.0.6 flags and legacy `.sig`/`.att`
+format as build-sign (see [Signing modes](#signing-modes)), so the same
+Kyverno key policy verifies images from either workflow. The steps are copied
+from build-sign rather than shared, so build-sign stays exactly as it is.
+
+It:
+
+1. checks `digest` is `sha256:<64 hex>` (a tag is rejected, so a mutable
+   reference is never signed) and `image` is a repository with no tag or
+   digest under `registry`;
+2. resolves `signing` (as build-sign: `auto` fails closed when the event
+   does not say whether the repository is private) and, in key mode, fails
+   at once if either secret is empty;
+3. logs in to `registry` with the job's `github.token` and signs
+   `<image>@<digest>`;
+4. `sbom: true`: generates an SPDX SBOM of the pushed digest with syft
+   (`anchore/sbom-action`) and attaches it with `cosign attest --type spdxjson`;
+5. `provenance: true`: attaches SLSA v1 provenance with
+   `cosign attest --type slsaprovenance1`;
+6. verifies the signature and the attestations it wrote (keyless: the run's
+   exact identity; key: `cosign-public-key`, skipped with a notice when that
+   is empty), and writes a step summary.
+
+### Caller example
+
+```yaml
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  build:
+    runs-on: ${{ vars.ARC_RUNNER_RB_BUILD }} # any runner
+    permissions:
+      contents: read # checkout
+      packages: write # push to ghcr.io
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}/app:${{ github.sha }}
+          # BuildKit's unsigned attestations off: they turn a single-platform
+          # image into an index, and sign.yaml attaches signed ones.
+          provenance: false
+          sbom: false
+
+  sign:
+    needs: build
+    permissions:
+      contents: read
+      packages: write # attach signatures and attestations in ghcr.io
+      id-token: write # GitHub OIDC: keyless signing, provenance claims
+    uses: goraxe-org/workflows/.github/workflows/sign.yaml@main
+    with:
+      image: ghcr.io/${{ github.repository }}/app # no tag
+      digest: ${{ needs.build.outputs.digest }}
+      # JSON: a quoted label, or an array of labels.
+      runs-on: ${{ toJSON(vars.ARC_RUNNER_RB_BUILD) }}
+      # signing: auto (default) = key for private repositories, else keyless.
+      cosign-public-key: |
+        -----BEGIN PUBLIC KEY-----
+        MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEYkt9YRTFbMVFYr5mNfoB4r3hFrIJ
+        X8gVjkTyrH61XQBJ3RakPIJv+hCRzgNtsa1kskFYluijKDX7xNL9LYme+Q==
+        -----END PUBLIC KEY-----
+    secrets:
+      COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+      COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+```
+
+For several images, give each build job its own `digest` output (or use one
+build job per image) and one `sign` job per image: a matrix job's outputs
+keep only one leg's value.
+
+`sign.yaml` itself only asks for `packages: write` and `id-token: write` on
+its job. `contents: read` in the example is harmless; it needs no checkout.
+
+As with build-sign, the secrets block maps the caller's secrets onto the
+names `sign.yaml` declares. goraxe-org repositories can use the organization
+secrets. **`goraxe/*` (personal account) repositories have no organization
+secrets: set `COSIGN_PRIVATE_KEY` and `COSIGN_PASSWORD` as repository
+secrets in each repository.** See [Secrets](#secrets).
+
+### sign inputs
+
+| Input               | Default           | Description                                                          |
+| ------------------- | ----------------- | -------------------------------------------------------------------- |
+| `image`             | (required)        | Repository with registry, no tag or digest. Lowercased.              |
+| `digest`            | (required)        | `sha256:<64 hex>` of the pushed image. Anything else fails.          |
+| `signing`           | `auto`            | `keyless`, `key`, or `auto`, as build-sign.                          |
+| `cosign-public-key` | (empty)           | Key mode: public key PEM for the post-sign verify. Not secret.       |
+| `runs-on`           | `"ubuntu-latest"` | JSON for `runs-on`: `'"label"'`, `'["a","b"]'`, or `toJSON(vars.X)`. |
+| `sbom`              | `true`            | Generate and attest an SPDX SBOM.                                    |
+| `provenance`        | `true`            | Attest SLSA v1 provenance.                                           |
+| `registry`          | `ghcr.io`         | Registry to log in to with `github.token`; `image` must be under it. |
+
+Secrets: `COSIGN_PRIVATE_KEY` and `COSIGN_PASSWORD`, as build-sign: only key
+mode reads them, and key mode fails before signing if either is empty.
+
+### sign outputs
+
+| Output      | Example                                  |
+| ----------- | ---------------------------------------- |
+| `image-ref` | `ghcr.io/goraxe/repo/app@sha256:4f1c...` |
+| `signing`   | `key` or `keyless`                       |
+
+### Runner requirements
+
+- **Disk:** syft pulls the image to build the SBOM, so the runner needs free
+  disk for the whole image. For large images pick a big runner with
+  `runs-on` (an ARC scale set, for example), or set `sbom: false`.
+- The runner needs `docker` (for `docker/login-action`; cosign and syft read
+  the credentials it writes), `curl`, `jq` and `base64`. GitHub-hosted
+  runners have them all.
+
+### Provenance
+
+The predicate has the same shape as build-sign's (built from the job's OIDC
+claims, `buildType: https://actions.github.io/buildtypes/workflow/v1`), with
+two differences: there is no `externalParameters.build` (sign.yaml does not
+know the build inputs), and `runDetails.builder.id` is `sign.yaml`'s
+`job_workflow_ref`. `externalParameters.workflow` and `resolvedDependencies`
+name the calling workflow and commit, which built the image.
+
+### Verifying sign.yaml signatures
+
+**Key mode** writes exactly what build-sign key mode writes: verify with the
+same commands and the same Kyverno `keys` attestor
+([Verifying, Key](#key)).
+
+**Keyless** (public callers only: the certificate, with the calling
+repository, commit and ref, goes to the public Rekor log) is signed by **this
+workflow**, a different identity from build-sign:
+
+```text
+https://github.com/goraxe-org/workflows/.github/workflows/sign.yaml@refs/heads/main
+```
+
+```sh
+cosign verify ghcr.io/<owner>/<repo>@sha256:<digest> \
+  --certificate-identity-regexp '^https://github\.com/goraxe-org/workflows/\.github/workflows/sign\.yaml@refs/heads/main$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-github-workflow-repository <owner>/<repo> \
+  --new-bundle-format=false
+```
+
+Kyverno (`verifyImages`, keyless, default `type: Cosign`):
+
+```yaml
+- imageReferences:
+    - ghcr.io/<owner>/<repo>*
+  attestors:
+    - entries:
+        - keyless:
+            subjectRegExp: ^https://github\.com/goraxe-org/workflows/\.github/workflows/sign\.yaml@refs/heads/main$
+            issuer: https://token.actions.githubusercontent.com
+            additionalExtensions:
+              githubWorkflowRepository: <owner>/<repo>
+            rekor:
+              url: https://rekor.sigstore.dev
+```
+
+To accept images from either workflow, match both:
+`^https://github\.com/goraxe-org/workflows/\.github/workflows/(build-sign|sign)\.yaml@refs/heads/main$`.
